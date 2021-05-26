@@ -1,18 +1,24 @@
 package ru.ought.portal_colony_engine.resources
 
 class Stash(initialBundle: Bundle = Bundle()) {
-    var bundle = initialBundle
-        private set(arg) {
+    private var _bundle = initialBundle
+        set(arg) {
             require(arg.isPositiveOrZero)
             field = arg
         }
 
-    fun addResources(arg: Bundle) {
-        bundle += arg
+    // Isolated so IntelliJ wouls stop incorrectly reporting it as mutable.
+    // Relevant issue: https://youtrack.jetbrains.com/issue/KT-35409
+    val bundle
+        get() = _bundle
+
+
+    fun add(arg: Bundle) {
+        _bundle += arg
     }
 
-    fun removeResources(arg: Bundle) {
-        bundle -= arg
+    fun remove(arg: Bundle) {
+        _bundle -= arg
     }
 
     fun hasResources(arg: Bundle): Boolean {
