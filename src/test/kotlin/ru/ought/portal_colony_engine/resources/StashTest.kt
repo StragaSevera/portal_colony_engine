@@ -3,6 +3,7 @@ package ru.ought.portal_colony_engine.resources
 import ch.tutteli.atrium.api.fluent.en_GB.*
 import ch.tutteli.atrium.api.verbs.expect
 import io.kotest.core.spec.style.DescribeSpec
+import io.mockk.mockk
 
 class StashTest : DescribeSpec({
     describe("basic tests") {
@@ -33,101 +34,121 @@ class StashTest : DescribeSpec({
     }
 
     describe("transactions") {
-        it("accepts correct transactions") {
-            val sut = Stash(Bundle(oil = 5, water = 5))
-            val transactions = listOf(
-                Transaction(Bundle(oil = 2)),
-                Transaction(Bundle(water = -5))
-            )
+        val entity = mockk<ResourceEntity>()
 
-            val result = sut.processTransactions(transactions)
+        context("processTransactions") {
+            it("accepts correct transactions") {
+                val sut = Stash(Bundle(oil = 5, water = 5))
+                val transactions = listOf(
+                    Transaction(Bundle(oil = 2), entity),
+                    Transaction(Bundle(water = -5), entity)
+                )
 
-            expect(result.accepted).toBe(transactions)
-            expect(result.rejected).isEmpty()
-            expect(transactions).all { its { state }.toBe(TransactionState.ACCEPTED) }
+                val result = sut.processTransactions(transactions)
+
+                expect(result.accepted).toBe(transactions)
+                expect(result.rejected).isEmpty()
+                expect(result.combinedBundle).toBe(Bundle(oil = 2, water = -5))
+            }
+
+            it("rejects incorrect transactions") {
+                val sut = Stash(Bundle(oil = 5, water = 5))
+                val transactions = listOf(
+                    Transaction(Bundle(oil = -7), entity),
+                    Transaction(Bundle(wood = -1), entity)
+                )
+
+                val result = sut.processTransactions(transactions)
+
+                expect(result.accepted).isEmpty()
+                expect(result.rejected).toBe(transactions)
+                expect(result.combinedBundle).toBe(Bundle())
+            }
+
+            it("accepts and rejects transactions") {
+                val sut = Stash(Bundle(oil = 5, water = 5))
+                val transactions = listOf(
+                    Transaction(Bundle(oil = -2), entity),
+                    Transaction(Bundle(wood = -1), entity)
+                )
+
+                val result = sut.processTransactions(transactions)
+
+                expect(result.accepted).containsExactly(transactions.first())
+                expect(result.rejected).containsExactly(transactions.last())
+                expect(result.combinedBundle).toBe(Bundle(oil = -2))
+            }
+
+            it("does not change contents of the stash") {
+                val sut = Stash(Bundle(oil = 5, water = 5))
+                val transactions = listOf(
+                    Transaction(Bundle(oil = -2), entity),
+                    Transaction(Bundle(wood = -1), entity)
+                )
+
+                sut.processTransactions(transactions)
+
+                expect(sut.bundle).toBe(Bundle(oil = 5, water = 5))
+            }
+
+            it("accepts transactions if balance is fixed by later transaction") {
+                val sut = Stash(Bundle(oil = 5, water = 5))
+                val transactions = listOf(
+                    Transaction(Bundle(oil = -2), entity),
+                    Transaction(Bundle(wood = -1), entity),
+                    Transaction(Bundle(wood = 2), entity),
+                )
+
+                val result = sut.processTransactions(transactions)
+
+                expect(result.accepted).contains.inAnyOrder.only.elementsOf(transactions)
+                expect(result.rejected).isEmpty()
+                expect(result.combinedBundle).toBe(Bundle(oil = -2, wood = 1))
+            }
+
+            it("handles a complex example") {
+                val sut = Stash(Bundle(oil = 5, water = 5))
+                val transactions = listOf(
+                    Transaction(Bundle(oil = -2), entity),
+                    Transaction(Bundle(wood = -1), entity),
+                    Transaction(Bundle(wood = 2), entity),
+                    Transaction(Bundle(wood = -3), entity),
+                    Transaction(Bundle(food = 5, coal = -3), entity),
+                    Transaction(Bundle(food = -5, coal = 3), entity),
+                    Transaction(Bundle(metal = -2), entity),
+                    Transaction(Bundle(metal = -1), entity),
+                    Transaction(Bundle(metal = 1), entity),
+                )
+                val acceptedTransactions = transactions.slice(0..2) + transactions.slice(7..8)
+                val rejectedTransactions = transactions.slice(3..6)
+
+                val result = sut.processTransactions(transactions)
+
+                expect(result.accepted).contains.inAnyOrder.only.elementsOf(acceptedTransactions)
+                expect(result.rejected).contains.inAnyOrder.only.elementsOf(rejectedTransactions)
+                expect(result.combinedBundle).toBe(Bundle(oil = -2, wood = 1))
+            }
         }
 
-        it("rejects incorrect transactions") {
-            val sut = Stash(Bundle(oil = 5, water = 5))
-            val transactions = listOf(
-                Transaction(Bundle(oil = -7)),
-                Transaction(Bundle(wood = -1))
-            )
+        context("applyTransactions") {
+            it("changes the stash in a complex example") {
+                val sut = Stash(Bundle(oil = 5, water = 5))
+                val transactions = listOf(
+                    Transaction(Bundle(oil = -2), entity),
+                    Transaction(Bundle(wood = -1), entity),
+                    Transaction(Bundle(wood = 2), entity),
+                    Transaction(Bundle(wood = -3), entity),
+                    Transaction(Bundle(food = 5, coal = -3), entity),
+                    Transaction(Bundle(food = -5, coal = 3), entity),
+                    Transaction(Bundle(metal = -2), entity),
+                    Transaction(Bundle(metal = -1), entity),
+                    Transaction(Bundle(metal = 1), entity),
+                )
 
-            val result = sut.processTransactions(transactions)
+                sut.applyTransactions(transactions)
 
-            expect(result.accepted).isEmpty()
-            expect(result.rejected).toBe(transactions)
-            expect(transactions).all { its { state }.toBe(TransactionState.REJECTED) }
-        }
-
-        it("accepts and rejects transactions") {
-            val sut = Stash(Bundle(oil = 5, water = 5))
-            val transactions = listOf(
-                Transaction(Bundle(oil = -2)),
-                Transaction(Bundle(wood = -1))
-            )
-
-            val result = sut.processTransactions(transactions)
-
-            expect(result.accepted).containsExactly(transactions.first())
-            expect(result.rejected).containsExactly(transactions.last())
-
-            expect(transactions.first().state).toBe(TransactionState.ACCEPTED)
-            expect(transactions.last().state).toBe(TransactionState.REJECTED)
-        }
-
-        it("changes contents of the stash") {
-            val sut = Stash(Bundle(oil = 5, water = 5))
-            val transactions = listOf(
-                Transaction(Bundle(oil = -2)),
-                Transaction(Bundle(wood = -1))
-            )
-
-            sut.processTransactions(transactions)
-
-            expect(sut.bundle).toBe(Bundle(oil = 3, water = 5))
-        }
-
-        it("accepts transactions if balance is fixed by later transaction") {
-            val sut = Stash(Bundle(oil = 5, water = 5))
-            val transactions = listOf(
-                Transaction(Bundle(oil = -2)),
-                Transaction(Bundle(wood = -1)),
-                Transaction(Bundle(wood = 2)),
-            )
-
-            val result = sut.processTransactions(transactions)
-
-            expect(result.accepted).contains.inAnyOrder.only.elementsOf(transactions)
-            expect(result.rejected).isEmpty()
-            expect(transactions).all { its { state }.toBe(TransactionState.ACCEPTED) }
-
-            expect(sut.bundle).toBe(Bundle(oil = 3, water = 5, wood = 1))
-        }
-
-        it("handles a complex example") {
-            val sut = Stash(Bundle(oil = 5, water = 5))
-            val transactions = listOf(
-                Transaction(Bundle(oil = -2)),
-                Transaction(Bundle(wood = -1)),
-                Transaction(Bundle(wood = 2)),
-                Transaction(Bundle(wood = -3)),
-                Transaction(Bundle(food = 5, coal = -3)),
-                Transaction(Bundle(food = -5, coal = 3)),
-            )
-            val acceptedTransactions = transactions.slice(0..2)
-            val rejectedTransactions = transactions.slice(3..5)
-
-            val result = sut.processTransactions(transactions)
-
-            expect(result.accepted).contains.inAnyOrder.only.elementsOf(acceptedTransactions)
-            expect(result.rejected).contains.inAnyOrder.only.elementsOf(rejectedTransactions)
-
-            expect(acceptedTransactions).all { its { state }.toBe(TransactionState.ACCEPTED) }
-            expect(rejectedTransactions).all { its { state }.toBe(TransactionState.REJECTED) }
-
-            expect(sut.bundle).toBe(Bundle(oil = 3, water = 5, wood = 1))
+                expect(sut.bundle).toBe(Bundle(oil = 3, water = 5, wood = 1))
+            }
         }
     }
 })

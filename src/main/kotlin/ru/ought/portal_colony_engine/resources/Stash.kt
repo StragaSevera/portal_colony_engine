@@ -18,18 +18,19 @@ class Stash(initialBundle: Bundle = Bundle()) {
         return bundle > arg
     }
 
-    data class TransactionProcessingResult(val accepted: List<Transaction>, val rejected: List<Transaction>)
+    data class TransactionProcessingResult(val combinedBundle: Bundle, val accepted: List<Transaction>, val rejected: List<Transaction>)
 
     fun processTransactions(transactions: List<Transaction>): TransactionProcessingResult {
+        var nextBundle = bundle
         var unprocessed = transactions.toMutableList()
         val accepted = mutableListOf<Transaction>()
         var rejected = mutableListOf<Transaction>()
 
         do {
             for (transaction in unprocessed) {
-                if (canAccept(transaction)) {
+                if (canAccept(nextBundle, transaction)) {
                     accepted.add(transaction)
-                    _bundle += transaction.bundle
+                    nextBundle += transaction.bundle
                 } else {
                     rejected.add(transaction)
                 }
@@ -41,12 +42,15 @@ class Stash(initialBundle: Bundle = Bundle()) {
             rejected = mutableListOf()
         } while (true)
 
-        accepted.forEach { it.accept() }
-        rejected.forEach { it.reject() }
-        return TransactionProcessingResult(accepted, rejected)
+        return TransactionProcessingResult(nextBundle - bundle, accepted, rejected)
     }
 
-    private fun canAccept(transaction: Transaction): Boolean {
-        return (bundle + transaction.bundle).isPositiveOrZero
+    fun applyTransactions(transactions: List<Transaction>) {
+        val data = processTransactions(transactions)
+        _bundle += data.combinedBundle
+    }
+
+    private fun canAccept(nextBundle: Bundle, transaction: Transaction): Boolean {
+        return (nextBundle + transaction.bundle).isPositiveOrZero
     }
 }
