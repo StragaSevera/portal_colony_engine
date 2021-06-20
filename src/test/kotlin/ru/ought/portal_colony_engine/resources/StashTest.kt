@@ -4,6 +4,7 @@ import ch.tutteli.atrium.api.fluent.en_GB.*
 import ch.tutteli.atrium.api.verbs.expect
 import io.kotest.core.spec.style.DescribeSpec
 import io.mockk.mockk
+import ru.ought.portal_colony_engine.entities.ResourceEntity
 
 class StashTest : DescribeSpec({
     describe("basic tests") {
